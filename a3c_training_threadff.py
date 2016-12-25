@@ -140,7 +140,7 @@ class A3CTrainingThread(object):
 
       if terminal:
         terminal_end = True
-        print("score={}".format(self.episode_reward))
+        # print("score={}".format(self.episode_reward))
 
         self._record_score(sess, summary_writer, summary_op, score_input,
                            self.episode_reward, global_t)

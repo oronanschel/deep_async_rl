@@ -268,3 +268,60 @@ class GameACLSTMNetwork(GameACNetwork):
             self.W_lstm, self.b_lstm,
             self.W_fc2, self.b_fc2,
             self.W_fc3, self.b_fc3]
+
+
+# Actor-Critic FF Network with Averaging
+class GameACFFNetwork_avg(GameACNetwork):
+  def __init__(self,
+               action_size,
+               thread_index,  # -1 for global
+               device="/cpu:0"):
+    GameACNetwork.__init__(self, action_size, thread_index, device)
+
+    scope_name = "net_" + str(self._thread_index)
+    with tf.device(self._device), tf.variable_scope(scope_name) as scope:
+      self.W_conv1, self.b_conv1 = self._conv_variable([8, 8, 4, 16])  # stride=4
+      self.W_conv2, self.b_conv2 = self._conv_variable([4, 4, 16, 32])  # stride=2
+
+      self.W_fc1, self.b_fc1 = self._fc_variable([2592, 256])
+
+      # weight for policy output layer
+      self.W_fc2, self.b_fc2 = self._fc_variable([256, action_size])
+
+      # weight for value output layer
+      self.W_fc3, self.b_fc3 = self._fc_variable([256, 1])
+
+      # state (input)
+      self.s = tf.placeholder("float", [None, 84, 84, 4])
+
+      h_conv1 = tf.nn.relu(self._conv2d(self.s, self.W_conv1, 4) + self.b_conv1)
+      h_conv2 = tf.nn.relu(self._conv2d(h_conv1, self.W_conv2, 2) + self.b_conv2)
+
+      h_conv2_flat = tf.reshape(h_conv2, [-1, 2592])
+      h_fc1 = tf.nn.relu(tf.matmul(h_conv2_flat, self.W_fc1) + self.b_fc1)
+
+      # policy (output)
+      self.pi = tf.nn.softmax(tf.matmul(h_fc1, self.W_fc2) + self.b_fc2)
+      # value (output)
+      v_ = tf.matmul(h_fc1, self.W_fc3) + self.b_fc3
+      self.v = tf.reshape(v_, [-1])
+
+
+  def run_policy_and_value(self, sess, s_t):
+    pi_out, v_out = sess.run([self.pi, self.v], feed_dict={self.s: [s_t]})
+    return (pi_out[0], v_out[0])
+
+  def run_policy(self, sess, s_t):
+    pi_out = sess.run(self.pi, feed_dict={self.s: [s_t]})
+    return pi_out[0]
+
+  def run_value(self, sess, s_t):
+    v_out = sess.run(self.v, feed_dict={self.s: [s_t]})
+    return v_out[0]
+
+  def get_vars(self):
+    return [self.W_conv1, self.b_conv1,
+            self.W_conv2, self.b_conv2,
+            self.W_fc1, self.b_fc1,
+            self.W_fc2, self.b_fc2,
+            self.W_fc3, self.b_fc3]
