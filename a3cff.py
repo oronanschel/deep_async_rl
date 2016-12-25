@@ -26,7 +26,7 @@ from constantsff import RMSP_ALPHA
 from constantsff import GRAD_NORM_CLIP
 from constantsff import USE_GPU
 from constantsff import USE_LSTM
-
+# GPU_FRACTION = 1
 
 def log_uniform(lo, hi, rate):
   log_lo = math.log(lo)

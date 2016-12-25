@@ -13,9 +13,14 @@ from constantsff import GAMMA
 from constantsff import LOCAL_T_MAX
 from constantsff import ENTROPY_BETA
 from constantsff import USE_LSTM
+import os
 
 LOG_INTERVAL = 100
 PERFORMANCE_LOG_INTERVAL = 1000
+PERFORMANCE_EVAL_INTERVAL = 125*10**3
+# PERFORMANCE_EVAL_INTERVAL = 10**4
+EVAL_RUNS = 10
+RESULTS_FILE = 'res1_breakout.csv'
 
 class A3CTrainingThread(object):
   def __init__(self,
@@ -62,6 +67,12 @@ class A3CTrainingThread(object):
 
     # variable controling log output
     self.prev_local_t = 0
+
+    tempdir = os.path.join(os.getcwd(), "results")
+    self.res_file = os.path.join(tempdir, RESULTS_FILE)
+    file = open(self.res_file, 'wb')
+    file.write('itr,mean_score,max,min,std,runs,test_steps\n')
+    file.close()
 
   def _anneal_learning_rate(self, global_time_step):
     learning_rate = self.initial_learning_rate * (self.max_global_time_step - global_time_step) / self.max_global_time_step
@@ -129,8 +140,7 @@ class A3CTrainingThread(object):
 
       if terminal:
         terminal_end = True
-        if (self.thread_index == 0):
-          print("score={}".format(self.episode_reward))
+        print("score={}".format(self.episode_reward))
 
         self._record_score(sess, summary_writer, summary_op, score_input,
                            self.episode_reward, global_t)
@@ -202,5 +212,47 @@ class A3CTrainingThread(object):
 
     # return advanced local step size
     diff_local_t = self.local_t - start_local_t
+
+    if (self.thread_index == 0) and (global_t% PERFORMANCE_EVAL_INTERVAL < 400):
+      # t_max times loop
+      self.test_episodes_rewards = []
+      test_steps = 0
+      for i in range(EVAL_RUNS):
+        self.game_state.reset()
+        self.test_episode_reward = 0
+        test_terminal = False
+        while not test_terminal:
+          test_steps += 1
+          pi_, value_ = self.local_network.run_policy_and_value(sess, self.game_state.s_t)
+          test_action = self.choose_action(pi_)
+          self.game_state.process(test_action)
+
+          # receive game result
+          test_reward = self.game_state.reward
+          test_terminal = self.game_state.terminal
+
+          self.test_episode_reward += test_reward
+
+          # s_t1 -> s_t
+          self.game_state.update()
+
+        self.test_episodes_rewards.append(self.test_episode_reward)
+      itr_p = global_t
+      avg_p = np.average(self.test_episodes_rewards)
+      std_p = np.std(self.test_episodes_rewards)
+      max_p = np.max(self.test_episodes_rewards)
+      min_p = np.min(self.test_episodes_rewards)
+      print 'itr:'+str(itr_p)+', avg score:'+str(avg_p) + ', std:' + str(std_p) + ', test_steps:'+str(test_steps) + ', episodes:'+str(EVAL_RUNS)
+
+
+      # .write('itr,mean_score,max,min,std,runs,test_steps\n')
+      file = open(self.res_file, 'a')
+      file.write("%d,%.2f,%.2f,%.2f,%.2f,%d,%d\n" % (itr_p,avg_p,max_p,min_p,std_p,EVAL_RUNS,test_steps))
+      file.close()
+      self.game_state.reset()
+
+
+
+
     return diff_local_t
 
